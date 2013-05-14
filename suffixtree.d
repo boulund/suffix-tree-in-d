@@ -38,26 +38,45 @@ class Node
 	int end;
 	int slink;
 	int id; 
+	int pos;
 	int[char] next; // hash gives O(1) lookup of outgoing edges
 	
 
 	/*
 	 * Node constructor.
 	 */
-	this(ref int last_added, int s, int e = int.max)
+	this(ref int last_added, int s, int e, int p)
 	{
 		this.start = s;
 		this.end = e;
 		this.slink = 0;
 		this.id = last_added++;
+		this.pos = p;
 	}
 
 	/*
-	 * Used during tree construction to compute edge length.
+	 * Used during tree construction to compute edge length
+	 * using the virtual end of all leaves (pos).
 	 */
-	int edge_length(ref int pos)
+	int edge_length(int pos)
 	{
 		return min(end, pos+1)-start;
+	}
+}
+
+
+/**
+ * A suffix tree.
+ */
+class SuffixTree
+{
+	Node[] tree;
+	string text;
+
+	this(Node[] t, string s)
+	{
+		this.tree = t;
+		this.text = s;
 	}
 }
 
@@ -70,7 +89,6 @@ void add_SL(ref Node node, ref int needSL, ref Node[] tree)
 {
 	if (needSL > 0)
 	{
-		debug writefln("Creating suffix link from %s to %s", needSL, node.id);
 		tree[needSL].slink = node.id;
 	}
 	needSL = node.id;
@@ -85,7 +103,6 @@ bool walk_down(ref Node node, ref int pos, ref int active_len, ref int active_e,
 	// Skip down the current edge if long enough; skip trick!
 	if (active_len >= tree[node.id].edge_length(pos))
 	{
-		debug writefln("Skipping down edge %s by %s", active_e, active_len);
 		active_e += tree[node.id].edge_length(pos);
 		active_len -= tree[node.id].edge_length(pos);
 		active_node = node;
@@ -100,7 +117,7 @@ bool walk_down(ref Node node, ref int pos, ref int active_len, ref int active_e,
  * Allocates memory and performs tree extensions once for each 
  * character in the input string.
  */
-Node[] create_ST(string input)
+SuffixTree create_ST(string input)
 {
 	// Initialize all variables
 	char unique_end = '$';
@@ -112,9 +129,8 @@ Node[] create_ST(string input)
 	int active_len = 0;
 
 	Node[] tree;  // Dynamically allocated array of all nodes in the stuffix tree
-	tree ~= new Node(last_added, -1,-1);
+	tree ~= new Node(last_added, -1, -1, -1);
 	Node active_node = tree[0];
-	debug assert(active_node is tree[0]);
 
 	// Dynamic array of characters that have been added to the tree 
 	// This could be refactored away to spare memory by using the
@@ -129,11 +145,6 @@ Node[] create_ST(string input)
 	 */
 	foreach (char c; input)
 	{
-		debug
-		{
-			foreach(n; tree){if (n is null){writef("n ");}else{writef("%s ", n.id);}};
-			writeln();
-		}
 		extend_ST(tree, c, last_added, pos, needSL, remainder, tree[0], active_node, active_e, active_len, text);
 	}
 
@@ -151,7 +162,9 @@ Node[] create_ST(string input)
 		}
 	}
 
-	return tree;
+	SuffixTree st = new SuffixTree(tree, input~unique_end);
+	
+	return st;
 }
 
 
@@ -174,21 +187,14 @@ void extend_ST(ref Node[] tree,
 			   ref char[] text)
 {
 	text[++pos] = c;
-	needSL = 0; // Zero kind of means "no node needs suffix link"
+	needSL = 0; // Zero means "no node needs suffix link"
 	remainder++;
 
-	debug assert(root.id is 0);
-	debug assert(root is tree[0]);
-	debug writeln("----- Starting new tree extension with ", c);
-	debug writeln(text);
-	debug writeln("Current position is ", pos);
-	debug writeln("Remainder is ", remainder);
 
 	while (remainder > 0)
 	{
 		if (active_len == 0)
 		{
-			debug writefln("Updating active_e to %s", pos);
 			active_e = pos;
 		}
 
@@ -196,37 +202,29 @@ void extend_ST(ref Node[] tree,
 		 * If active_node doesn't have edge out of it beginning with char c,
 		 * create a new child node with that edge.
 		 */
-		debug writefln("Current active_node is %s and active_edge is c='%s'.", active_node.id, text[active_e]);
-		if (c in tree[active_node.id].next)
+		if (text[active_e] in tree[active_node.id].next)
 		{
 			int next = tree[active_node.id].next[text[active_e]];
-			debug writefln("An edge beginning with '%s' already exists out of active node %s.", text[active_e], active_node.id);
-			debug writefln("The node with edge beginning with '%s' is %s", text[active_e], next);
 			if (walk_down(tree[next], pos, active_len, active_e, active_node, tree))
 			{
 				// Observation 2: just modify the active point
-				debug writefln("Modified the active_node to %s", active_node.id);
 				continue;
 			}
 			if (text[tree[next].start + active_len] == c)
 			{
-				debug writefln("The current suffix is already in the tree.");
 				// Observation 1: the final suffix is already in the tree, only update active point and remainder
 				active_len++;
 				// Observation 3: if there is a node requiring a suffix link, make that link
 				add_SL(active_node, needSL, tree); 
-				debug writefln("Updated active node to %s and updating remainder and starting over.", active_node.id);
 				break;
 			}
 			// split node (internal)
-			tree ~= new Node(last_added, tree[next].start, tree[next].start + active_len);
+			tree ~= new Node(last_added, tree[next].start, tree[next].start + active_len, -1);
 			int internal = last_added-1; // The index of the new node in the tree array
 			tree[active_node.id].next[text[active_e]] = tree[internal].id; 
 			// leaf node
-			tree ~= new Node(last_added, pos); // maxint as end; virtual end of all leaves!
+			tree ~= new Node(last_added, pos, int.max, active_e); // maxint as end; virtual end of all leaves!
 			int leaf = last_added-1;
-			debug assert(leaf != internal);
-			debug writefln("Created and added new internal node %s and new leaf node %s.", internal, leaf);
 
 			// Make sure the pointers to next nodes are updated.
 			tree[internal].next[c] = leaf;
@@ -236,12 +234,9 @@ void extend_ST(ref Node[] tree,
 		}
 		else
 		{
-			debug writefln("Node %s does not have an outgoing edge beginning with '%s', "
-						   "creating a new leaf node %s.", active_node.id, c, last_added);
 			// Create new leaf node out of active_node
-			tree ~= new Node(last_added, pos); // maxint as end 
+			tree ~= new Node(last_added, pos, int.max, active_e); // maxint as end 
 			tree[active_node.id].next[text[active_e]] = tree[last_added-1].id;
-			debug writefln("New leaf node %s added to active_node %s.", tree[last_added-1].id, active_node.id);
 			
 		}
 		remainder--;
@@ -263,7 +258,6 @@ void extend_ST(ref Node[] tree,
 		{
 			if (tree[active_node.id].slink > 0)
 			{
-				debug writefln("Following suffix link from %s to %s", active_node.id, active_node.slink);
 				active_node = tree[active_node.slink];
 			}
 			else
@@ -281,9 +275,9 @@ void extend_ST(ref Node[] tree,
  * Prints a complete suffix tree by calling print_node one time
  * for each node out of the root node.
  */
-void print_ST(ref Node[] tree, string s)
+void print_ST(ref SuffixTree st)
 {
-	print_node(tree[0], tree, s, 0);
+	print_node(st.tree[0], st.tree, st.text, 0);
 }
 
 /**
@@ -318,35 +312,145 @@ void print_node(Node node, Node[] tree, string s, int depth)
 	}
 }
 
-/*
- * Debug printout of all nodes in the tree.
- */
-void debug_print_ST(ref Node[] tree, string s)
-{
-	foreach(i, n; tree)
-	{
-		try
-		{
-			if (n.end == int.max) 
-				writefln("%s %s %s %s %s", i, n.next, n.start, n.end, s[n.start .. s.length]);
-			else
-				writefln("%s %s %s %s %s", i, n.next, n.start, n.end, s[n.start .. n.end]);
-		}
-		catch (core.exception.RangeError)
-		{
-			writefln("%s %s %s %s %s", i, n.next, n.start, n.end, "root");
-		}
-	}
-}
 
 
 /**
  * Performs a search for substring in the suffix tree.
  */
-void search_ST(Node[] tree, string s)
+int[] search_ST(ref SuffixTree st, string s)
 {
-	if (s[0] in tree[0].next)
-		writeln("True");
+	int next_node = 0;
+	int matched_characters = 0;
+	int[] positions;
+
+	if (s.length == 0) { return positions;}
+
+
+	if (s[0] in st.tree[0].next)
+	{
+		matched_characters++;
+		next_node = st.tree[0].next[s[0]];
+
+		if (search_node(st, next_node, s, matched_characters, positions))
+			return positions;
+	}
+
+	positions.length = 0;
+	return positions;
+}
+
+
+int[] find_leaf_positions(ref SuffixTree st, int cur_node)
+{
+	int[] positions;
+	if (st.tree[cur_node].next.length == 0)
+	{
+		positions ~= st.tree[cur_node].pos;
+		return positions;
+	}
+	foreach (n; st.tree[cur_node].next)
+	{
+		positions ~= find_leaf_positions(st, n);
+	}
+	return positions;
+}
+
+
+
+bool search_node(ref SuffixTree st, int cur_node, string s, ref int matched_characters, ref int[] positions)
+{
+
+	if (matched_characters == s.length)
+	{
+		positions ~= find_leaf_positions(st, cur_node);
+		return true;
+	}
+	/*
+	 * Go through all positions on the edge of this node except the first,
+	 * since it has already been matched in the outgoing edge from the
+	 * previous node. 
+	 */
+	foreach (pos; st.tree[cur_node].start+1 .. st.tree[cur_node].end)
+	{
+
+		if (s[matched_characters] == st.text[pos])
+		{
+			matched_characters++;
+
+			// Don't continue searching if complete query string is matched now.
+			if (matched_characters >= s.length)
+			{
+				// Append the current position on this edge, as this is 
+				// also a position where the entire search string is
+				// begins as a substring of the tree string.
+				positions ~= find_leaf_positions(st, cur_node);
+				return true;
+			}
+		}
+		else
+		{
+			return false;
+		}
+		
+	}
+
+
+	/*
+	 * Finished searching the incoming edge now, check if there is an outgoing
+	 * edge beginning with the next character in the search string.
+	 */
+	if (matched_characters < s.length && s[matched_characters] in st.tree[cur_node].next)
+	{
+		// Don't continue searching if complete query string is matched now.
+		if (matched_characters == s.length)
+		{
+			// Find the start indexes of all leaf nodes beneath this one
+			// to find all occurences of this suffix in the tree string.
+			//positions ~= st.tree[cur_node].pos;
+			positions ~= find_leaf_positions(st, cur_node); 
+			return true;
+		}
+		else 
+		{
+			cur_node = st.tree[cur_node].next[s[matched_characters]];
+			return search_node(st, cur_node, s, ++matched_characters, positions);
+		}
+	}
+	else if (matched_characters == s.length) 
+	{
+		positions ~= find_leaf_positions(st, cur_node);
+		return true;
+	}
+	return false;
+}
+
+
+
+unittest
+{
+	string s = "bananas";
+	SuffixTree st = create_ST(s);
+
+	int[] positions;
+	int[] correct_positions = [0, 1, 2, 3, 4, 5, 6, 7];
+	
+	// Searching for all suffixes in the tree string
+	foreach(i, c; s)
+	{
+		positions = search_ST(st, s[i..$]);
+		assert(positions[0] == correct_positions[i]);
+	}
+
+	// Search for a string NOT in the tree
+	positions = search_ST(st, "anab");
+	assert(positions.length == 0);
+
+	// Search for all substrings that are not suffixes
+	foreach(i, c; s)
+	{
+		positions = search_ST(st, s[i..$]);
+		assert(positions[0] == i);
+	}
 }
 
 
@@ -358,8 +462,14 @@ void search_ST(Node[] tree, string s)
 int main(string[] argv)
 {
 	string s;
+	string search;
 	if (argv.length == 2)
 		s = argv[1];
+	else if (argv.length == 3)
+	{
+		s = argv[1];
+		search = argv[2];
+	}
 	else
 	{
 		//s = "abbc";
@@ -368,10 +478,12 @@ int main(string[] argv)
 		//s = "cdddcdc";
 		//s = "abcabxabcd";
 		//s = "xabxa";
-		s = "mississippi";
+		//s = "mississippi";
+		//search = "ipp";
 		writeln("Suffix Tree implementation in the D programming language");
 		writeln("Fredrik Boulund 2013");
-		writeln("Usage: suffixtree STRING");
+		writeln("Usage: suffixtree STRING [QUERY]");
+		return 0;
 	}
 
 	writeln("Suffixes of '", s, "' to insert into the tree:");
@@ -379,14 +491,21 @@ int main(string[] argv)
 		writeln(" ", s[i..$]);
 
 	writeln("Creating suffix tree for '", s, "'...");
-	Node[] tree = create_ST(s);
+	SuffixTree st = create_ST(s);
 	writeln("Tree creation completed!");
 
-	print_ST(tree, s~"$");
-	debug debug_print_ST(tree, s~'$');
+	print_ST(st);
 
-	
-	search_ST(tree, "banan");
+	int[] positions = search_ST(st, search);
+	if (positions.length == 0)
+	{
+		writefln("No matches to '%s' found in the tree string '%s'", search, st.text);
+	}
+	else
+	{
+		writeln("Found matches to '", search, "' at the following positions");
+		writeln(positions);
+	}
 
 	return 0;
 }
