@@ -138,7 +138,6 @@ SuffixTree create_ST(string input)
 	char[] text; 
 	// Will never be longer than input string + unique end character.
 	text.length = input.length+1; 
-	
 
 	/*
 	 * Perform extension of tree for each character in the supplied string
@@ -151,7 +150,6 @@ SuffixTree create_ST(string input)
 	// Add the final unique char to make the implicit suffix tree explicit
 	extend_ST(tree, unique_end, last_added, pos, needSL, remainder, tree[0], active_node, active_e, active_len, text);
 
-
 	// Update the virtual end position (previously set to int.max)
 	// of all leaf nodes to the final character of the input string.
 	foreach (node; tree)
@@ -163,7 +161,6 @@ SuffixTree create_ST(string input)
 	}
 
 	SuffixTree st = new SuffixTree(tree, input~unique_end);
-	
 	return st;
 }
 
@@ -189,7 +186,6 @@ void extend_ST(ref Node[] tree,
 	text[++pos] = c;
 	needSL = 0; // Zero means "no node needs suffix link"
 	remainder++;
-
 
 	while (remainder > 0)
 	{
@@ -237,12 +233,11 @@ void extend_ST(ref Node[] tree,
 			// Create new leaf node out of active_node
 			tree ~= new Node(last_added, pos, int.max, active_e); // maxint as end 
 			tree[active_node.id].next[text[active_e]] = tree[last_added-1].id;
-			
 		}
 		remainder--;
 		
 		/*
-		 * Rule 1: "
+		 * Rule 1:
 		 *  If after an insertion from the active node = root, 
 		 *  the active length is greater than 0, then:
 		 *    active node is not changed
@@ -285,7 +280,6 @@ void print_ST(ref SuffixTree st)
  */
 void print_node(Node node, Node[] tree, string s, int depth)
 {
-	int d = depth;
 	if (depth == 0)
 	{
 		writeln("root");		
@@ -293,10 +287,9 @@ void print_node(Node node, Node[] tree, string s, int depth)
 	else if (depth > 0)
 	{
 		// Print branches from higher nodes
-		foreach(l; 1..d)
+		foreach(l; 1..depth)
 		{
 			write("|");
-			d--;
 		}
 		write("+");
 		// Print the actual node
@@ -317,7 +310,7 @@ void print_node(Node node, Node[] tree, string s, int depth)
 /**
  * Performs a search for substring in the suffix tree.
  */
-int[] search_ST(ref SuffixTree st, string s)
+int[] search_ST(SuffixTree st, string s)
 {
 	int next_node = 0;
 	int matched_characters = 0;
@@ -340,7 +333,7 @@ int[] search_ST(ref SuffixTree st, string s)
 }
 
 
-int[] find_leaf_positions(ref SuffixTree st, int cur_node)
+int[] find_leaf_positions(SuffixTree st, int cur_node)
 {
 	int[] positions;
 	if (st.tree[cur_node].next.length == 0)
@@ -357,9 +350,8 @@ int[] find_leaf_positions(ref SuffixTree st, int cur_node)
 
 
 
-bool search_node(ref SuffixTree st, int cur_node, string s, ref int matched_characters, ref int[] positions)
+bool search_node(SuffixTree st, int cur_node, string s, ref int matched_characters, ref int[] positions)
 {
-
 	if (matched_characters == s.length)
 	{
 		positions ~= find_leaf_positions(st, cur_node);
@@ -372,13 +364,12 @@ bool search_node(ref SuffixTree st, int cur_node, string s, ref int matched_char
 	 */
 	foreach (pos; st.tree[cur_node].start+1 .. st.tree[cur_node].end)
 	{
-
 		if (s[matched_characters] == st.text[pos])
 		{
 			matched_characters++;
 
 			// Don't continue searching if complete query string is matched now.
-			if (matched_characters >= s.length)
+			if (matched_characters == s.length)
 			{
 				// Append the current position on this edge, as this is 
 				// also a position where the entire search string is
@@ -391,35 +382,17 @@ bool search_node(ref SuffixTree st, int cur_node, string s, ref int matched_char
 		{
 			return false;
 		}
-		
 	}
-
 
 	/*
 	 * Finished searching the incoming edge now, check if there is an outgoing
 	 * edge beginning with the next character in the search string.
 	 */
-	if (matched_characters < s.length && s[matched_characters] in st.tree[cur_node].next)
+	if (s[matched_characters] in st.tree[cur_node].next)
 	{
-		// Don't continue searching if complete query string is matched now.
-		if (matched_characters == s.length)
-		{
-			// Find the start indexes of all leaf nodes beneath this one
-			// to find all occurences of this suffix in the tree string.
-			//positions ~= st.tree[cur_node].pos;
-			positions ~= find_leaf_positions(st, cur_node); 
-			return true;
-		}
-		else 
-		{
-			cur_node = st.tree[cur_node].next[s[matched_characters]];
-			return search_node(st, cur_node, s, ++matched_characters, positions);
-		}
-	}
-	else if (matched_characters == s.length) 
-	{
-		positions ~= find_leaf_positions(st, cur_node);
-		return true;
+		// TODO: Investigate try-get from hash
+		cur_node = st.tree[cur_node].next[s[matched_characters]];
+		return search_node(st, cur_node, s, ++matched_characters, positions);
 	}
 	return false;
 }
