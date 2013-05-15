@@ -436,12 +436,19 @@ int main(string[] argv)
 {
 	string s;
 	string search;
+	bool print = true;
 	if (argv.length == 2)
 		s = argv[1];
 	else if (argv.length == 3)
 	{
 		s = argv[1];
 		search = argv[2];
+	}
+	else if (argv.length == 4 && argv[3] == "-p")
+	{
+		s = argv[1];
+		search = argv[2];
+		print = false;	
 	}
 	else
 	{
@@ -455,19 +462,23 @@ int main(string[] argv)
 		//search = "ipp";
 		writeln("Suffix Tree implementation in the D programming language");
 		writeln("Fredrik Boulund 2013");
-		writeln("Usage: suffixtree STRING [QUERY]");
+		writeln("Usage: suffixtree STRING [QUERY] [-p]");
 		return 0;
 	}
 
-	writeln("Suffixes of '", s, "' to insert into the tree:");
-	foreach(i, c; s)
-		writeln(" ", s[i..$]);
+
+	if (print)
+	{
+		writeln("Suffixes of '", s, "' to insert into the tree:");
+		foreach(i, c; s)
+			writeln(" ", s[i..$]);
+	}
 
 	writeln("Creating suffix tree for '", s, "'...");
 	SuffixTree st = create_ST(s);
 	writeln("Tree creation completed!");
 
-	print_ST(st);
+	if (print) print_ST(st);
 
 	int[] positions = search_ST(st, search);
 	if (positions.length == 0)
